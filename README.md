@@ -9,7 +9,7 @@ Designed to work via a unix pipe.
 Examples
 =======
 
-Shell piping:
+Shell pipes:
 ```
 $ echo test | ./zmqpush.py 
 Processed 1 messages in 2.2003ms. Tagged with @pid:19867
@@ -23,7 +23,7 @@ Processed 100 messages in 48.8532ms. Tagged with @pid:19853
 Processed 100 messages in 50.1794ms. Tagged with @pid:19858
 ```
 
-rsyslog5:
+rsyslog5: Ship all messages with RFC5424 format
 ```
 $ cat /etc/rsyslog.d/01-shipper.conf 
 $ModLoad omprog
