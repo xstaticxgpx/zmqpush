@@ -11,8 +11,6 @@ except AttributeError:
     zmq.STREAM = zmq.STREAMER
     import aiozmq
 
-#fcntl.fcntl(sys.stdout, fcntl.F_SETFL, os.O_NONBLOCK)
-
 # config
 loghost = "localhost"
 logport = "5014"
@@ -25,7 +23,8 @@ __poll_end = [(0, 1)]
 __poll_eof = [(0, 16)]
 
 def quote_escape(s):
-    return s.replace('"', '\\"')
+    #return s.replace('"', '\\"')
+    return s.replace('"', "'")
 
 @asyncio.coroutine
 def zmq_pusher(q, loop, EOFFuture, ZMQFuture):
@@ -70,6 +69,7 @@ def zmq_pusher(q, loop, EOFFuture, ZMQFuture):
                 jsonmsg = '{"message":"%s","type":"%s","@pid":%d}' % (quote_escape(line),
                                                                       logtype, 
                                                                       pid)
+                #print(jsonmsg)
                 pusher.write((b'', jsonmsg.encode('utf-8')))
                 yield from pusher.drain()
                 logf.write(b'after-q-get\n')
@@ -100,21 +100,22 @@ def stdin_queuer(q, loop, EOFFuture, ZMQFuture):
             poll = poller.poll(timeout=0.05)
             if poll and poll != __poll_eof:
                 for line in sys.stdin:
-                    yield from q.put(quote_escape(line.strip()))
+                    yield from q.put(line.strip())
                     logf.write(b'after-q-put\n')
+                    yield
             elif not poll:
                 yield
             else:
                 raise EOFError
 
     except KeyboardInterrupt:
-        pass
+        loop.stop()
+
+    except InterruptedError:
+        loop.stop()
     
     except EOFError:
         EOFFuture.cancel()
-
-    finally:
-        loop.stop()
 
 if __name__ == '__main__':
 
@@ -134,8 +135,9 @@ if __name__ == '__main__':
     try:
         logf = open('/tmp/zmqpush', 'w+b', buffering=0)
 
-        # non-blocking stdin/out
+        # non-blocking stdin
         fcntl.fcntl(sys.stdin, fcntl.F_SETFL, os.O_NONBLOCK)
+        # Edge-Trigger epoll
         poller = select.epoll()
         poller.register(sys.stdin, select.EPOLLIN | select.EPOLLET)
         
@@ -145,5 +147,5 @@ if __name__ == '__main__':
     finally:
         _end = loop.time()
     
-        #print('Processed %d messages in %.04fms. Tagged with @pid:%d' % (msgcount, (_end-_start)*1000, pid))
+        print('Processed %d messages in %.04fms. Tagged with @pid:%d' % (msgcount, (_end-_start)*1000, pid))
         sys.exit(0)
