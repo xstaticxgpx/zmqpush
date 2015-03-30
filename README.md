@@ -2,7 +2,9 @@ zmqpush
 =======
 
 Asynchronously queue STDIN and push with ZeroMQ.
+Built with new python asyncio standard library, and aiozmq.
 
+Utilizes NONBLOCK stdin and Edge-Triggered epoll() to detect content and queue from stdin.
 Designed to work via a unix pipe.
 
 
@@ -27,6 +29,6 @@ rsyslog5: Ship all messages with RFC5424 format
 ```
 $ cat /etc/rsyslog.d/01-shipper.conf 
 $ModLoad omprog
-$ActionOMProgBinary /home/gpacui001c/Build/zmqpush.py
+$ActionOMProgBinary /path/to/zmqpush.py
 *.*							:omprog:;RSYSLOG_SyslogProtocol23Format
 ```
