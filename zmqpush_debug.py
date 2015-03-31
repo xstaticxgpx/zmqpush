@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python3
 import asyncio
 import fcntl
 import os
@@ -96,6 +96,7 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
 def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
     global poller, __poll_eof
     global pid
+    global logf
     global logtype
 
     try:
