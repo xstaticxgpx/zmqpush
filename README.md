@@ -51,6 +51,6 @@ Details
 
 `stdin_queuer()` is configured to epoll on sys.stdin, with a timeout after 50ms. When input is detected, a `for line in sys.stdin` loop is initiated to pull all available input into the queue.
 
-A `yield` is given after every message from stdin is queued to allow `zmq_pusher()` to pick up the message out of the queue (or attempt the drain the filled socket buffer) and quickly ship it through the ZeroMQ socket. This allows continuous streams of stdin to be worked on asynchronously.
+A `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message out of the queue (or attempt the drain the socket buffer) and instantly send it through the ZeroMQ socket. This allows continuous streams of stdin to be worked on asynchronously.
 
 If no input is detected by the epoll, `stdin_queuer()` simply yields, which allows `zmq_pusher()` to clear the queue without needing to wait for the yield in `for line in sys.stdin` - which is a blocking call. This allows `zmq_pusher()` to properly drain the socket buffer and internal queue in the event of connectivity issues, regardless of received input.
