@@ -29,7 +29,6 @@ Processed 100 messages in 50.1794ms. Tagged with @pid:19858
 
 rsyslog5: Ship all messages with RFC5424 format
 ```
-$ cat /etc/rsyslog.d/01-shipper.conf 
 $ModLoad omprog
 $ActionOMProgBinary /path/to/zmqpush.py
 *.*							:omprog:;RSYSLOG_SyslogProtocol23Format
