@@ -49,8 +49,8 @@ $ActionOMProgBinary /path/to/zmqpush.py
 Details
 =======
 
-Initially, `zmqpush` will take the 1st command-line argument and assign it to `logtype`. 
+`stdin_queuer()` is configured to epoll on sys.stdin, with a timeout after 50ms. When input is detected, a for loop is initiated to pull all available lines into the queue.
 
-If no arguments are specified `logtype` is set to "syslog".
+A `yield` is given after every message from stdin is queued to allow `zmq_pusher()` to pick up the message out of the queue and quickly ship it through the ZeroMQ socket. This allows continuous streams of stdin to be worked on  asynchronously.
 
-`stdin_queuer()` is configured to epoll on sys.stdin, with a timeout after 50ms. When input is detected
+If not input is detected by the epoll, `stdin_queuer()` yields to `zmq_pusher()`, which allows `zmq_pusher()` to clear the queue (without needing to wait for the yield during `for line in sys.stdin` (which is normally a blocking call)
