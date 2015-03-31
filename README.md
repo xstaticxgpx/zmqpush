@@ -1,9 +1,9 @@
 zmqpush
 =======
 
-Asynchronously queue STDIN and push with ZeroMQ.
+Asynchronously queue STDIN and push across the wire using ZeroMQ socket.
 
-Built with new python asyncio standard library, and aiozmq.
+Built with Python3's new asyncio module and aiozmq.
 
 Utilizes NONBLOCK stdin and Edge-Triggered epoll() to detect content and queue from stdin.
 
