@@ -3,12 +3,23 @@ zmqpush
 
 Asynchronously queue STDIN and push across the wire using a ZeroMQ socket.
 
-Built with Python3's new asyncio module and aiozmq.
+Built with the new (in python3.4) asyncio module and aiozmq.
 
-Utilizes NONBLOCK-ing stdin and Edge-Triggered epoll() to detect content and queue from stdin.
+Utilizes NONBLOCK-ing stdin and Edge-Triggered epoll() to detect content in stdin.
 
 Designed to work via a unix pipe.
 
+Currently, it formats messages in the following JSON format:
+
+```
+jsonmsg = '{"message":"%s","type":"%s","@pid":%d}' % (quote_escape(line),
+                                                                   logtype,
+                                                                   pid)
+```
+
+`zmqpush` will take the 1st command-line argument and assign it to `logtype`. 
+
+If no arguments are specified `logtype` is set to "syslog". This is destined to be utilized by Logstash in the filter logic.
 
 Examples
 =======
@@ -33,3 +44,13 @@ $ModLoad omprog
 $ActionOMProgBinary /path/to/zmqpush.py
 *.*							:omprog:;RSYSLOG_SyslogProtocol23Format
 ```
+
+
+Details
+=======
+
+Initially, `zmqpush` will take the 1st command-line argument and assign it to `logtype`. 
+
+If no arguments are specified `logtype` is set to "syslog".
+
+`stdin_queuer()` is configured to epoll on sys.stdin, with a timeout after 50ms. When input is detected
