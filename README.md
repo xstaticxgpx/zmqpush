@@ -52,8 +52,8 @@ $ActionOMProgBinary /path/to/zmqpush.py
 Details
 =======
 
-`stdin_queuer()` is configured to perform an edge-triggered epoll on sys.stdin which will timeout after 50ms. When input is detected, a `for line in sys.stdin` loop is initiated to pull all available input into the queue.
+`stdin_queuer()` is configured to perform an edge-triggered poll on sys.stdin which will timeout after 50ms. When input is detected, a `for line in sys.stdin` loop is initiated to pull all available input into the queue.
 
 A `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message out of the queue and instantly write it to the ZeroMQ socket. This allows continuous streams of input to be worked on asynchronously.
 
-If no input is detected by the epoll, `stdin_queuer()` simply yields, which allows `zmq_pusher()` to clear the queue, if nescessary, without needing to wait for the yield in the  `for line in sys.stdin` loop - which normally is blocking. This allows `zmq_pusher()` to properly drain the socket buffer and internal queue in the event of connectivity issues, regardless of input.
+If no input is detected by the epoll, `stdin_queuer()` simply yields, which allows `zmq_pusher()` to clear the queue, if nescessary, without needing to wait for the yield in the  `for line in sys.stdin` loop - which normally is blocking. This allows `zmq_pusher()` to properly drain the socket buffer and queue in the event of connectivity issues, regardless of input.
