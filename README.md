@@ -43,9 +43,9 @@ $ while true; do seq 1 100 && sleep 1; done | zmqpush.py
 
 rsyslog5: Ship all messages with RFC5424 format
 ```
-$ModLoad omprog
+$ModLoad            omprog
 $ActionOMProgBinary /path/to/zmqpush.py
-*.*							:omprog:;RSYSLOG_SyslogProtocol23Format
+*.*                 :omprog:;RSYSLOG_SyslogProtocol23Format
 ```
 
 
@@ -54,6 +54,9 @@ Details
 
 `stdin_queuer()` is configured to perform an edge-triggered poll on sys.stdin which will timeout after 50ms. When input is detected, a `for line in sys.stdin` loop is initiated to pull all available input into the queue.
 
-A `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message out of the queue and instantly write it to the ZeroMQ socket. This allows continuous streams of input to be worked on asynchronously.
+A `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message out of the queue and immediately write it to the ZeroMQ socket. This allows continuous streams of input to be worked on properly.
 
-If no input is detected by the epoll, `stdin_queuer()` simply yields, which allows `zmq_pusher()` to clear the queue, if nescessary, without needing to wait for the yield in the  `for line in sys.stdin` loop - which normally is blocking. This allows `zmq_pusher()` to properly drain the socket buffer and queue in the event of connectivity issues, regardless of input.
+If no input is detected by the epoll, `stdin_queuer()` simply yields, which allows `zmq_pusher()` to clear the queue, if nescessary, without needing to wait for the yield in the  `for line in sys.stdin` loop - which normally is blocking. This allows `zmq_pusher()` to properly drain the socket buffer and/or queue in the event of connectivity issues, regardless of input.
+
+If there is no active input and nothing in the queue or socket buffer, the application will essentially just poll stdin every 50ms. Having it this low does cause a slight amount CPU usage,
+
