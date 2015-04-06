@@ -161,4 +161,3 @@ if __name__ == '__main__':
         _end = loop.time()
     
         print('Processed %d messages in %.04fms. Tagged with @pid:%d' % (msgcount, (_end-_start)*1000, pid))
-        sys.exit(0)
