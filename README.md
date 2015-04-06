@@ -54,11 +54,11 @@ Details
 
 `stdin_queuer()` is configured to perform an edge-triggered poll on sys.stdin which will timeout after 50ms. 
 
-If input is detected during during the poll, a `for line in sys.stdin` loop is initiated to pull all available input into the queue. If there is a continuous stream of input, `stdin_queuer()` will most likely not leave this loop.
+If input is detected during the poll, a `for line in sys.stdin` loop is initiated to pull all available input into the queue. If there is a continuous stream of input, `stdin_queuer()` will most likely not leave this loop.
 
-Hence, a `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message out of the queue and immediately write it to the ZeroMQ socket. This allows continuous streams of input to be shipped via `zmq_pusher()` properly.
+Hence, a `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message and immediately write it to the ZeroMQ socket. This allows continuous streams of input to be shipped via `zmq_pusher()` properly.
 
-If no input is detected by the poll, `stdin_queuer()` simply yields, which allows `zmq_pusher()` to clear the queue, if nescessary, without needing to wait for the yield in the  `for line in sys.stdin` loop - which normally is blocking. This allows `zmq_pusher()` to properly drain the socket buffer and/or queue in the event of connectivity issues, regardless of input.
+If no input is detected by the poll, `stdin_queuer()` simply yields, which allows `zmq_pusher()` to clear the queue, if nescessary, without having to wait for the yield in the  `for line in sys.stdin` loop - which normally is blocking. This allows `zmq_pusher()` to properly drain the socket buffer and/or queue in the event of connectivity issues, regardless of input.
 
 If there is no active input, the application will essentially just poll stdin every 50ms. This setting could be contested based on the reported CPU usage, but it's so computationally minimal as to be irrelevant. It's relatively light on interrupts and context switches as well.
 
