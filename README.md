@@ -19,7 +19,7 @@ jsonmsg = '{"message":"%s","type":"%s","@pid":%d}' % (quote_escape(line),
 
 `zmqpush` will take the 1st command-line argument and assign it to `logtype`. 
 
-If no arguments are specified `logtype` is set to "syslog". This is destined to be utilized by Logstash in the filter logic.
+If no argument is specified `logtype` is set to "syslog". This is destined to be utilized by Logstash in the filter logic.
 
 Examples
 =======
