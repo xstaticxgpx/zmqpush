@@ -11,27 +11,38 @@ except AttributeError:
     zmq.STREAM = zmq.STREAMER
     import aiozmq
 
-# config
-loghost = "localhost"
+## Configuration variables
+loghost = "xfwlgs-as-vip.sys.comcast.net"
 logport = "5014"
+##
 
-# internal variables
+## Internal variables
 pid         = os.getpid()
+# ZeroMQ connection doesn't do host lookup
 loghost     = socket.gethostbyname(loghost)
+# Initiate msgcount counter
 msgcount    = 0
-
-# Pipe input comes in as EPOLLIN | EPOLLHUP (1 | 16 = 17)
-# Safe to assume just EPOLLHUP means EOF
-__poll_eof  = [(0, select.EPOLLHUP)]
-# Ctrl+D on the command line doesn't seem to initiate any EOF,
-# so we catch Ctrl+C via KeyboardInterrupt exception
+##
 
 def quote_escape(s):
+    """Either backslash-escape or replace double quotes"""
+
     #return s.replace('"', '\\"')
     return s.replace('"', "'")
 
+# Decorators: https://www.python.org/dev/peps/pep-0318/
 @asyncio.coroutine
 def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
+    """
+    Utilizes shared queue object (q) to get messages,
+    which are then written to a ZeroMQ PUSH socket.
+
+    ZMQFuture object is updated once socket has been stood up.
+
+    STDINFuture cancellation by stdin_queuer() indicates EOF
+    """
+
+    #global logf
     global msgcount
     global loghost, logport
     
@@ -53,10 +64,10 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
         # 0s timeout to prevent hang on trying to complete socket
         # (will drop msgs if EOF is reached and connection is down)
         # default: -1 (infinite)
-        pusher.transport.setsockopt(zmq.LINGER, 0)
+        #pusher.transport.setsockopt(zmq.LINGER, 0)
         low, high = pusher.transport.get_write_buffer_limits()
     
-        # Inform stdin_queuer to continue
+        # Inform stdin_queuer() to continue
         ZMQFuture.set_result(True)
 
         while True:
@@ -70,51 +81,69 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
 
             else:
                 if STDINFuture.cancelled() and q.empty():
+                    # stdin_queuer() finally clause will cancel STDINFuture,
+                    # If that is cancelled and queue is empty, we're done.
                     #logf.write(b'EOF\n')
                     break
                 #logf.write(b'before-q-get\n')
-                # Get pre-.strip()'d line from queue
+                # Get pre-stripped line from queue
+                # This is a "blocking" call, but only for this coroutine
+                # "yield from" will allow other coroutines to continue
+                # this coroutine will progress once the queue returns an item
                 line = yield from q.get()
                 # JSON format the message
                 jsonmsg = '{"message":"%s","type":"%s","@pid":%d}' % (quote_escape(line),
                                                                       logtype, 
                                                                       pid)
                 # Write message to the ZeroMQ socket
+                # This does not ensure delivery, and is non-blocking.
+                # we have pseudo-blocking logic above to prevent socket buffer overruns
+                # Tuple (topic, message) - no topic needed for pushpull topology
                 pusher.write((b'', jsonmsg.encode('utf-8')))
                 #logf.write(b'after-q-get\n')
+
+                # Whether or not message is delivered via the socket (we can't know),
+                # still increment counter variable for sanity
                 msgcount += 1
                 if q.empty():
                     yield
-        # don't do this.. will lose messages
-        #pusher.close()
 
     finally:
+        # Practically, this stops the application
         loop.stop()
 
 @asyncio.coroutine
 def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
-    global poller, __poll_eof
+    global poller
     global pid
+    #global logf
     global logtype
 
     try:
         # Wait max. 1s for ZeroMQ connection to be stood up
-        # (prevents race condition at start up)
+        # (Seems to prevent race condition at start up)
         yield from asyncio.wait_for(ZMQFuture, 1, loop=loop)
         #logf.write(b'after-pusher\n')
 
         while True:
-            
-            # Check for input every 50ms
+            # Wait 50ms for input before yielding
+            # If zmq_pusher() is idle, this will poll continuously.
+            # poller returns [(fd, event)], hence poll[0][1] == event
             poll = poller.poll(timeout=0.05)
-            if poll and poll != __poll_eof:
-
+            # Pipe input event comes in as EPOLLIN | EPOLLHUP (1 | 16 = 17)
+            # Safe to assume just EPOLLHUP means EOF
+            # Ctrl+D on the command line doesn't seem to initiate any EOF,
+            # so we catch Ctrl+C via KeyboardInterrupt exception
+            if poll and poll[0][1] != select.EPOLLHUP:
+                # Input detected, and not EOF
                 for line in sys.stdin:
+                    # Consume all available input and place into queue
                     yield from q.put(line.strip())
                     #logf.write(b'after-q-put\n')
                     yield
 
             elif not poll:
+                # No input detected, still no EOF either
                 yield
 
             else:
@@ -123,9 +152,11 @@ def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
 
     except (KeyboardInterrupt, InterruptedError):
         # Ctrl+C or Ctrl+Z
+        # Practically, this stops the application
         loop.stop()
 
     finally:
+        # zmq_pusher() will use this as a EOF notification
         STDINFuture.cancel()
 
 if __name__ == '__main__':
