@@ -27,8 +27,12 @@ msgcount    = 0
 def quote_escape(s):
     """Either backslash-escape or replace double quotes"""
 
-    #return s.replace('"', '\\"')
-    return s.replace('"', "'")
+    global logtype
+
+    if not logtype == "json":
+        return s.replace('"', "'")
+    else:
+        return s.replace('"', '\\"')
 
 # Decorators: https://www.python.org/dev/peps/pep-0318/
 @asyncio.coroutine
