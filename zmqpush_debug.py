@@ -29,7 +29,7 @@ def quote_escape(s):
 
     global logtype
 
-    if not logtype == "json":
+    if not "json" in logtype:
         return s.replace('"', "'")
     else:
         return s.replace('"', '\\"')
