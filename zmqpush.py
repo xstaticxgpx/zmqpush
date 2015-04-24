@@ -128,7 +128,7 @@ def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
     """
     Utilizes shared queue object (q) to put messages in.
 
-    STDINFuture cancellation by stdin_queuer() indicates EOF
+    STDINFuture cancellation indicates EOF to zmq_pusher()
     """
 
     global pid, poller
