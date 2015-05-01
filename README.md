@@ -7,9 +7,9 @@ Built with the new (in python3.4) asyncio module and aiozmq.
 
 Utilizes NONBLOCK-ing stdin and Edge-Triggered epoll() to detect content in stdin.
 
-Designed to work via a unix pipe.
+Designed to recieve input via a unix pipe and send to Logstash zeromq input.
 
-Currently, it formats messages in the following JSON format:
+Currently, it formats every line from stdin into the following JSON:
 
 ```
 jsonmsg = '{"message":"%s","type":"%s","@pid":%d}' % (quote_escape(line),
@@ -19,7 +19,11 @@ jsonmsg = '{"message":"%s","type":"%s","@pid":%d}' % (quote_escape(line),
 
 `zmqpush` will take the 1st command-line argument and assign it to `logtype`. 
 
-If no argument is specified `logtype` is set to "syslog". This is destined to be utilized by Logstash in the filter logic.
+If no argument is specified, `logtype` is set to "syslog" in order to compensate for rsyslog OMProg's inability to pass arguments.
+
+`logtype` variable is put into the JSON as "type", which allows it to be automatically parsed and utilized directly by Logstash.
+
+`@pid` is the currently executing zmqpush process ID, and was added mostly for debugging, however it remains since it may be useful down the line.
 
 Examples
 =======
@@ -52,17 +56,34 @@ $ActionOMProgBinary /path/to/zmqpush.py
 Details
 =======
 
-`stdin_queuer()` is configured to perform an edge-triggered poll on sys.stdin which will timeout after 50ms. 
+`zmq_pusher()` stands up the ZeroMQ socket, updates ZMQFuture object, then enters a `while True` in which it perpetually writes messages from the queue to the ZeroMQ socket.
 
-If input is detected during the poll, a `for line in sys.stdin` loop is initiated to pull all available input into the queue. If there is a continuous stream of input, `stdin_queuer()` will most likely not leave this loop.
+`stdin_queuer()` will wait for the ZMQFuture object, then enters a `while True` loop in which it perpetually performs a poll checking for input on stdin, which it places into the queue.
 
-Hence, a `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message and immediately write it to the ZeroMQ socket. This allows continuous streams of input to be shipped via `zmq_pusher()` properly.
+If input is detected during the poll cycle, the inner `for line in sys.stdin` loop is initiated to pull all available input into the queue. If there is a continuous stream of input, `stdin_queuer()` will most likely not leave the inner for loop, therefor a `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message and immediately write it to the ZeroMQ socket. This allows continuous streams of input to be shipped via `zmq_pusher()` in a practically synchronous manner.
 
-If no input is detected by the poll, `stdin_queuer()` simply yields, which allows `zmq_pusher()` to clear the queue, if nescessary, without having to wait for the yield in the  `for line in sys.stdin` loop - which normally is blocking. This allows `zmq_pusher()` to properly drain the socket buffer and/or queue in the event of connectivity issues, regardless of input.
+If no input is detected, `stdin_queuer()` just yields, which allows `zmq_pusher()` the chance to clear the socket buffer and/or queue, if nescessary. Most likely, if there's no connectivity issues, `zmq_pusher()` will have nothing to do, so it instantly comes back to `stdin_queuer()` and the poll cycle starts again, and again, etc.
 
-If there is no active input, the application will essentially just poll stdin every 50ms. This setting could be contested based on the reported CPU usage, but it's so computationally minimal as to be irrelevant. It's relatively light on interrupts and context switches as well.
+50ms for the poll cycle (timeout) could be unnescessarily frequent, however further down the stats show its barely utilizing any resources at all - and having it this low allows it to be responsive to new input and quick in its recovery after connectivity issues.
 
-Following tests were performed on a single-core VM.
+If there are connectivity issues, `zmq_pusher()` has logic to catch when the socket buffer has exceeded the low watermark, which will stop it from writing any further messages from the queue to the socket. Instead it will initiate an asynchronous buffer drain on the socket, then sleep for 100ms.
+Meanwhile, `stdin_queuer()` will continue to read and put input into the queue, which inevitably would increase the memory footprint. Depending on the amount of input, and how long connectivity is down, the memory footprint could grow minimally or massively - which may be a possible hazard in some extreme situation. Queue size limit could be configured so there's some sort of ceiling, however it is currently unlimited.
+
+The buffer watermarks are configurable, however by default ZMQ automatically sets them based within the OS socket settings, which is probably ideal. Since we're using a PUSH socket, let's compare against TCP write memory:
+```
+# ./zmqpush-watermark.py 
+Low watermark: 16384
+High watermark: 65536
+
+# sysctl -a | grep 'tcp_wmem'
+net.ipv4.tcp_wmem = 4096	16384	4194304
+```
+
+
+Stats
+=======
+
+Following tests were performed on a single-core VM, with zmqpush running via rsyslog, comparing various poll timeouts-
 
 No load:
 ```
