@@ -58,7 +58,7 @@ Details
 
 `zmq_pusher()` stands up the ZeroMQ socket, updates ZMQFuture object, then enters a `while True` in which it perpetually writes messages from the queue to the ZeroMQ socket.
 
-`stdin_queuer()` will wait for the ZMQFuture object, then enters a `while True` loop in which it perpetually performs a poll checking for input on stdin, which it places into the queue.
+`stdin_queuer()` will wait for the ZMQFuture object, then enter a `while True` loop in which it perpetually performs a poll for input on stdin, which it places into the queue.
 
 If input is detected during the poll cycle, the inner `for line in sys.stdin` loop is initiated to pull all available input into the queue. If there is a continuous stream of input, `stdin_queuer()` will most likely not leave the inner for loop, therefor a `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message and immediately write it to the ZeroMQ socket. This allows continuous streams of input to be shipped via `zmq_pusher()` in a practically synchronous manner.
 
