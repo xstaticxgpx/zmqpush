@@ -28,7 +28,12 @@ If no argument is specified, `logtype` is set to "syslog" in order to compensate
 Configuration
 =======
 
-dd
+```
+## Configuration variables
+loghost = "xfwlgs-as-vip.sys.comcast.net"
+logport = "5014"
+##
+```
 
 Examples
 =======
