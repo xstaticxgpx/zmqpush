@@ -79,6 +79,9 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
         while True:
 
             if pusher.transport.get_write_buffer_size() > low:
+                # Socket buffer has hit the low watermark threshold,
+                # any further processing from queue is prevented until buffer clears
+
                 logf.write(b'above-low-write\n')
                 logf.write(b'before-drain-buffer\n')
                 # If buffer size is greater than low watermark, 
