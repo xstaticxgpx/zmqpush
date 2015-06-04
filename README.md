@@ -66,23 +66,26 @@ $ActionOMProgBinary /path/to/zmqpush.py
 Details
 =======
 
-`zmq_pusher()` stands up the ZeroMQ socket, updates ZMQFuture object, then enters a `while True` in which it perpetually writes messages from the queue to the ZeroMQ socket.
+zmqpush is essentially made up of two functions, decorated as asyncio.coroutines. They are launched in parallel, and in order to prevent a race condition on startup we utilize asyncio.Future objects to coordinate between the coroutines.
 
-`stdin_queuer()` will wait for the ZMQFuture object, then enter a `while True` loop in which it perpetually performs a poll for input on stdin, which it places into the queue.
+`zmq_pusher()` will stand up the ZeroMQ socket, update ZMQFuture object, then enter a `while True` in which it perpetually writes messages from the queue to the ZeroMQ socket.
+
+`stdin_queuer()` will wait for the ZMQFuture object to be updated, then enter a `while True` loop in which it perpetually performs a poll for input on stdin, which it places into the queue.
 
 If input is detected during the poll cycle, the inner `for line in sys.stdin` loop is initiated to pull all available input into the queue. If there is a continuous stream of input, `stdin_queuer()` will most likely not leave the inner for loop, therefor a `yield` is given after every line from stdin is queued so `zmq_pusher()` can pick up the message and immediately write it to the ZeroMQ socket. This allows continuous streams of input to be shipped via `zmq_pusher()` in a practically synchronous manner.
 
-If no input is detected, `stdin_queuer()` just yields, which allows `zmq_pusher()` the chance to clear the ZeroMQ socket buffer and/or queue, if nescessary. Most likely, if there's no connectivity issues, `zmq_pusher()` will have nothing to do, so it instantly comes back to `stdin_queuer()` and the poll cycle starts again, and again, etc.
+If no input is detected, `stdin_queuer()` just yields, which allows `zmq_pusher()` the chance to clear the ZeroMQ socket buffer and/or queue, if nescessary. If there haven't been any connectivity issues, `zmq_pusher()` will have nothing to do, so it instantly comes back to `stdin_queuer()` and the poll cycle starts again, repeat ad infinitum. 
 
-50ms for the poll cycle (timeout) could be unnescessarily frequent, however further down the load is shown to be minimal on idle, which ise the only scenario that will show any really difference between poll timeout settings. Also, having it this low allows  to very quick in its shipment of new input and in its recovery after connectivity issues. 
+50ms for the poll cycle (timeout) could be unnescessarily frequent, however further down the load is shown to be minimal on idle, which is the only scenario that will show any really difference between poll timeout settings. Having it this low also allows `zmq_pusher()` to both quickly ship incoming input and recover after connectivity issues.
 
-If there are connectivity issues, `zmq_pusher()` has logic to catch when the ZeroMQ socket buffer has exceeded the low watermark (described below), which will stop it from getting any further messages from the queue or writing them to the socket. Instead an asynchronous buffer drain is initiated on the socket, then it will asynchronously sleep for 100ms - which will yield back to `stdin_queuer()`. Hence, input will continue to be placed into the queue, which will grow in application memory. Depending on the amount of input, and how long connectivity is down, the memory footprint could grow minimally or massively - which may be a possible hazard in some extreme situation. Queue size limit could be configured so there's some sort of ceiling, however it is currently unlimited.
+If there are connectivity issues, `zmq_pusher()` has logic to catch when the ZeroMQ socket buffer has exceeded the low watermark (described below), which will stop it from getting any further messages from the queue or writing them to the socket. Instead `zmq_pusher()` will initiate an asynchronous buffer drain on the socket, then initiate an asynchronous sleep for 100ms - which will yield back to `stdin_queuer()`. Hence, input will continue to be placed into the queue, which will grow in application memory.
+**Depending on the amount of input,** and how long connectivity is down, the memory footprint could grow minimally or massively - which may be a possible hazard in some extreme situation. Queue size limit could be configured so there's some sort of ceiling, however it is currently unlimited.
 
-The reasoning behind this is to provide resilient log reporting from the source by queueing messages and ensuring there is no buffer overflow during connectivity outages. This also compensates for rsyslog5's synchronous processing - messages logged via syslog will never hang up on the OMProg output given the way this application uses nonblocking stdin. When utilizing a standard, blocking stdin file descriptor to read input, the buffer for the rsyslog OMProg's pipe could (seemingly) max out and hang, preventing subsequent rsyslog processing such as sending messages to the local files. (BAD!)
+The reasoning behind this is to provide resilient log reporting from the source by queueing messages and ensuring there is no buffer overflow during connectivity outages. This also compensates for rsyslog5's synchronous processing - messages sent through syslog will never hang on the OMProg output given that we set `sys.stdin` nonblocking. When using the default blocking `sys.stdin` file descriptor, rsyslog OMProg's stdout pipe would fill up and then start blocking, which stopped rsyslog processing and prevented messages from being sent to the local file destinations until the OMProg->zmqpush pipe was cleared. (BAD!)
 
-A possible improvement to this application would be to move the queue to disk periodically, maybe during the buffer drain cycles, then read from disk during recovery when connection is back up.
+*A possible improvement to this application would be to move the queue to disk periodically, maybe during the buffer drain cycles, then read from disk during recovery when connection is back up.*
 
-The buffer watermarks are configurable, however by default ZMQ automatically sets them based within the OS socket settings, which is probably ideal. Since we're writing to a PUSH socket, let's compare against TCP write memory:
+*The buffer watermarks are configurable, however by default ZMQ automatically sets them based within the OS socket settings, which is probably ideal. Since we're writing to a PUSH socket, let's compare against TCP write memory:*
 ```
 # ./zmqpush-watermark.py 
 Low watermark: 16384
