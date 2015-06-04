@@ -68,7 +68,7 @@ Details
 
 zmqpush is essentially made up of two functions, decorated as asyncio.coroutines. They are launched in parallel, and in order to prevent a race condition on startup we utilize asyncio.Future objects to coordinate between the coroutines.
 
-`zmq_pusher()` will stand up the ZeroMQ socket, update ZMQFuture object, then enter a `while True` loop in which it perpetually writes messages from the queue to the ZeroMQ socket.
+`zmq_pusher()` will start the ZeroMQ socket, update ZMQFuture object, then enter a `while True` loop in which it perpetually writes messages from the queue to the ZeroMQ socket.
 
 `stdin_queuer()` will wait for the ZMQFuture object to be updated, then enter a `while True` loop in which it perpetually polls for input on stdin, which it places into the queue.
 
@@ -81,7 +81,7 @@ If no input is detected, `stdin_queuer()` just yields, which allows `zmq_pusher(
 If there are connectivity issues, `zmq_pusher()` has logic to catch when the ZeroMQ socket buffer has exceeded the low watermark (described below), which will stop it from getting any further messages from the queue or writing them to the socket. Instead `zmq_pusher()` will initiate an asynchronous buffer drain on the socket, then initiate an asynchronous sleep for 100ms - which will yield back to `stdin_queuer()`. Hence, input will continue to be placed into the queue, which will grow in application memory.
 **Depending on the amount of input,** and how long connectivity is down, the memory footprint could grow minimally or massively - which may be a possible hazard in some extreme situation. Queue size limit could be configured so there's some sort of ceiling, however it is currently unlimited.
 
-The reasoning behind this is to provide resilient log reporting from the source by queueing messages and ensuring there is no buffer overflow during connectivity outages. This also compensates for rsyslog5's synchronous processing - messages sent through syslog will never hang on the OMProg output given that we set `sys.stdin` nonblocking. When using the default blocking `sys.stdin` file descriptor, rsyslog OMProg's stdout pipe would fill up and then start blocking, which stopped rsyslog processing and prevented messages from being sent to the local file destinations until the OMProg->zmqpush pipe was cleared. (BAD!)
+The reasoning behind all this is to provide resilient log reporting from the source by queueing messages and ensuring there is no buffer overflow during connectivity outages. This also compensates for rsyslog5's synchronous processing - messages sent through syslog will never hang on the OMProg output given that we set `sys.stdin` nonblocking. When using the default blocking `sys.stdin` file descriptor, rsyslog OMProg's stdout pipe would fill up and then start blocking, which stopped rsyslog processing and prevented messages from being sent to the local file destinations until the OMProg->zmqpush pipe was cleared. (BAD!)
 
 *A possible improvement to this application would be to move the queue to disk periodically, maybe during the buffer drain cycles, then read from disk during recovery when connection is back up.*
 
