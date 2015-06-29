@@ -2,7 +2,7 @@
 import asyncio
 import fcntl
 import os
-import select, socket, sys
+import select, sys
 import zmq, aiozmq
 
 # Caused by building aiozmq against newer zmq sources
@@ -14,14 +14,14 @@ import zmq, aiozmq
 #    import aiozmq
 
 ## Configuration variables
-loghost = "xfwlgs-as-vip.sys.comcast.net"
+loghost = "10.54.140.14" #xfwlgs-as-vip.sys.comcast.net
 logport = "5014"
 ##
 
 ## Internal variables
 pid         = os.getpid()
 # ZeroMQ connection doesn't do hostname lookup
-loghost     = socket.gethostbyname(loghost)
+#loghost     = socket.gethostbyname(loghost)
 # Initiate msgcount counter
 msgcount    = 0
 ##
