@@ -3,6 +3,7 @@ import asyncio
 import fcntl
 import os
 import select, sys
+#import socket
 import zmq, aiozmq
 
 # Caused by building aiozmq against newer zmq sources
@@ -80,17 +81,14 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
 
             if pusher.transport.get_write_buffer_size() > low:
                 # Socket buffer has hit the low watermark threshold,
-                # any further processing from queue is prevented until buffer clears
-
+                # any further processing from queue is prevented until buffer clears.
                 logf.write(b'above-low-write\n')
                 logf.write(b'before-drain-buffer\n')
-                # If buffer size is greater than low watermark, 
                 # Attempt to drain buffer every 100ms
                 # stdin_queuer() will continue to fill the queue while this yields
                 yield from pusher.drain()
                 yield from asyncio.sleep(0.1)
                 logf.write(b'after-drain-buffer\n')
-
 
             else:
                 # Socket buffer is within threshold
@@ -102,7 +100,7 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
                     break
 
                 ## Get message from queue
-                # `yield from` allows other coroutines to run until there's an available item
+                # `yield from` allows other coroutines to run until something is returned
                 logf.write(b'before-q-get\n')
                 line = yield from q.get()
 
@@ -112,7 +110,7 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
                                                                       pid)
                 ## Write message to the ZeroMQ socket
                 # This is a non-blocking call, and therefor does not guarantee delivery
-                # write() takes a tuple (topic, message), no topic needed for PUSH socket
+                # write() takes a bytes-tuple (topic, message), no topic needed for PUSH socket
                 pusher.write((b'', jsonmsg.encode('utf-8')))
                 logf.write(b'after-q-get\n')
 
@@ -122,9 +120,11 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
                 if q.empty():
                     yield
 
-    finally:
-        # Practically, this stops the application
         loop.stop()
+
+    except RuntimeError:
+        # Loop was stopped by stdin_queuer()
+        pass
 
 @asyncio.coroutine
 def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
@@ -145,34 +145,51 @@ def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
         logf.write(b'after-pusher\n')
 
         while True:
+            logf.write(b'inside-queuer-loop\n')
             # Wait 50ms for input before yielding
             # If zmq_pusher() is idle, this will poll continuously.
             poll = poller.poll(timeout=0.05)
-            # Pipe input event comes in as EPOLLIN | EPOLLHUP (1 | 16 = 17)
+            logf.write(b'after-poll\n')
+            # Pipe input event comes in as EPOLLIN or EPOLLIN | EPOLLHUP (1 | 16 = 17)
             # Safe to assume just EPOLLHUP means EOF
             # poller returns [(fd, event)], hence poll[0][1] == event
+            logf.write(str(poll).encode())
             if poll and poll[0][1] != select.EPOLLHUP:
+                logf.write(b'if-poll\n')
                 # Input detected, and not EOF
                 for line in sys.stdin:
+                    logf.write(b'for-line-stdin\n')
+                    #logf.write(line.encode())
                     # Consume all available input and place into queue
                     yield from q.put(line.strip())
                     logf.write(b'after-q-put\n')
                     yield
+                logf.write(b'if-poll-before-continue\n')
+                continue
 
             elif not poll:
                 # No input detected, still no EOF either
+                logf.write(b'if-not-poll\n')
                 yield
+                continue 
 
             else:
+                logf.write(b'HUP-break\n')
                 # EOF
                 break
 
-    except (KeyboardInterrupt, InterruptedError):
-        # Ctrl+C or Ctrl+Z
+            logf.write(b'bad-beef\n') #should not happen
+
+    except:
+        logf.write(b'exception\n')
+        e = sys.exc_info()[0]
+        logf.write(str(e).encode())
+        logf.write(b'\n')
         # Practically, this stops the application
         loop.stop()
 
     finally:
+        logf.write(b'queuer-finally\n')
         # zmq_pusher() will use this as a EOF notification
         STDINFuture.cancel()
 
@@ -207,6 +224,7 @@ if __name__ == '__main__':
         loop.run_forever()
 
     finally:
+        loop.close()
         _end = loop.time()
     
         print('Processed %d messages in %.04fms. Tagged with @pid:%d' % (msgcount, (_end-_start)*1000, pid))
