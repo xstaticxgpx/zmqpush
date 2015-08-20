@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+"""
+https://github.comcast.com/gpacui001c/zmqpush
+"""
+
 import asyncio
 import fcntl
 import os
@@ -36,8 +40,8 @@ def quote_escape(s):
         # If not json-like, replace " -> '
         return s.replace('"', "'")
     else:
-        # If json-like, backslash escape quotes to allow json parsing in logstash
-        return s.replace('"', '\\"')
+        # If json-like, double-escape existing backslashes, then escape quotes
+        return s.replace('\\', '\\\\').replace('"', '\\"')
 
 # Decorators: https://www.python.org/dev/peps/pep-0318/
 @asyncio.coroutine
