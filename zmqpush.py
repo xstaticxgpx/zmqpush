@@ -31,17 +31,11 @@ pid         = os.getpid()
 msgcount    = 0
 ##
 
-def quote_escape(s):
-    """Either backslash-escape or replace double quotes"""
+def escape(s):
+    """Backslash-escape string for proper logstash parsing"""
 
-    global logtype
-
-    if not "json" in logtype:
-        # If not json-like, replace " -> '
-        return s.replace('"', "'")
-    else:
-        # If json-like, double-escape existing backslashes, then escape quotes
-        return s.replace('\\', '\\\\').replace('"', '\\"')
+    # note, this is changing \ -> \\ and " -> \" respectively
+    return s.replace('\\', '\\\\').replace('"', '\\"')
 
 # Decorators: https://www.python.org/dev/peps/pep-0318/
 @asyncio.coroutine
@@ -52,7 +46,6 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
 
     ZMQFuture object is updated once socket has been stood up.
     """
-
 
     global msgcount
     global loghost, logport
@@ -103,7 +96,7 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
                 line = yield from q.get()
 
                 ## Format the message
-                jsonmsg = '{"message":"%s","type":"%s","@pid":%d}' % (quote_escape(line),
+                jsonmsg = '{"message":"%s","type":"%s","@pid":%d}' % (escape(line),
                                                                       logtype, 
                                                                       pid)
                 ## Write message to the ZeroMQ socket
@@ -140,15 +133,12 @@ def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
         yield from asyncio.wait_for(ZMQFuture, 1, loop=loop)
 
         while True:
-
             # Wait 50ms for input before yielding
             # If zmq_pusher() is idle, this will poll continuously.
             poll = poller.poll(timeout=0.05)
-
             # Pipe input event comes in as EPOLLIN or EPOLLIN | EPOLLHUP (1 | 16 = 17)
             # Safe to assume just EPOLLHUP means EOF
             # poller returns [(fd, event)], hence poll[0][1] == event
-
             if poll and poll[0][1] != select.EPOLLHUP:
                 # Input detected, and not EOF
                 for line in sys.stdin:
@@ -165,9 +155,9 @@ def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
             else:
                 # EOF
                 break
-
     except:
         # Practically, this stops the application
+        _zmq_pusher_task.cancel()
         loop.stop()
 
     finally:
@@ -188,8 +178,8 @@ if __name__ == '__main__':
     ZMQFuture = asyncio.Future()
     STDINFuture = asyncio.Future()
 
-    asyncio.async(zmq_pusher(q, loop, ZMQFuture, STDINFuture))
-    asyncio.async(stdin_queuer(q, loop, ZMQFuture, STDINFuture))
+    _zmq_pusher_task = asyncio.async(zmq_pusher(q, loop, ZMQFuture, STDINFuture))
+    _stdin_queuer_task = asyncio.async(stdin_queuer(q, loop, ZMQFuture, STDINFuture))
 
     try:
         # Set sys.stdin non-blocking
