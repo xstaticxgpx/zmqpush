@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 https://github.comcast.com/gpacui001c/zmqpush
+v0.5
 """
 
 import asyncio
