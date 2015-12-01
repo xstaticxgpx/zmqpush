@@ -28,6 +28,8 @@ logport = "5014"
 pid = os.getpid()
 # ZeroMQ connection doesn't do hostname lookup
 #loghost     = socket.gethostbyname(loghost)
+# Initiate msgcount counter
+msgcount = 0
 ##
 
 def escape(s):
@@ -150,6 +152,7 @@ def stdin_queuer(q, loop, zmq_future, stdin_future):
             else:
                 # EOF
                 break
+
     except: # pylint: disable=bare-except
         # Practically, this stops the application
         _zmq_pusher_task.cancel()
@@ -177,9 +180,6 @@ if __name__ == '__main__':
     _stdin_queuer_task = asyncio.async(stdin_queuer(_q, _loop, _ZMQFuture, _STDINFuture))
 
     try:
-        # Initiate msgcount counter
-        msgcount = 0
-
         # Set sys.stdin non-blocking
         fcntl.fcntl(sys.stdin, fcntl.F_SETFL, os.O_NONBLOCK)
         # Edge-Triggered epoll (for non-blocking file descriptors)

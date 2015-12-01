@@ -25,11 +25,11 @@ logport = "5014"
 ##
 
 ## Internal variables
-pid         = os.getpid()
+pid = os.getpid()
 # ZeroMQ connection doesn't do hostname lookup
 #loghost     = socket.gethostbyname(loghost)
 # Initiate msgcount counter
-msgcount    = 0
+msgcount = 0
 ##
 
 def escape(s):
@@ -40,7 +40,7 @@ def escape(s):
 
 # Decorators: https://www.python.org/dev/peps/pep-0318/
 @asyncio.coroutine
-def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
+def zmq_pusher(q, loop, zmq_future, stdin_future):
     """
     Utilizes shared queue object (q) to get messages,
     which are then written to a ZeroMQ PUSH socket.
@@ -48,10 +48,8 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
     ZMQFuture object is updated once socket has been stood up.
     """
 
-    global logf
-    global msgcount
-    global loghost, logport
-    
+    global msgcount # pylint: disable=global-statement
+
     try:
         logf.write(b'before-pusher\n')
         # Stand up ZeroMQ socket
@@ -64,17 +62,17 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
         socket.setsockopt(zmq.RECONNECT_IVL, 1000)
 
         pusher = yield from aiozmq.create_zmq_stream(
-                            zmq_type=zmq.PUSH, zmq_sock=socket,
-                            connect="tcp://%s:%d" % (loghost, int(logport)))
+            zmq_type=zmq.PUSH, zmq_sock=socket,
+            connect="tcp://%s:%d" % (loghost, int(logport)))
 
         # 0s timeout to prevent hang on trying to complete socket
         # (will drop msgs if EOF is reached and connection is down)
         # default: -1 (infinite)
         #pusher.transport.setsockopt(zmq.LINGER, 0)
-        low, high = pusher.transport.get_write_buffer_limits()
-    
+        low = pusher.transport.get_write_buffer_limits()[0]
+
         # Inform stdin_queuer() to continue
-        ZMQFuture.set_result(True)
+        zmq_future.set_result(True)
 
         while True:
 
@@ -92,7 +90,7 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
             else:
                 # Socket buffer is within threshold
 
-                if STDINFuture.cancelled() and q.empty():
+                if stdin_future.cancelled() and q.empty():
                     # stdin_queuer() finally clause will cancel STDINFuture,
                     # If that is cancelled and queue is empty, we're done.
                     logf.write(b'EOF\n')
@@ -105,7 +103,7 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
 
                 ## Format the message
                 jsonmsg = '{"message":"%s","type":"%s","@pid":%d}' % (escape(line),
-                                                                      logtype, 
+                                                                      logtype,
                                                                       pid)
                 ## Write message to the ZeroMQ socket
                 # This is a non-blocking call, and therefor does not guarantee delivery
@@ -126,21 +124,17 @@ def zmq_pusher(q, loop, ZMQFuture, STDINFuture):
         pass
 
 @asyncio.coroutine
-def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
+def stdin_queuer(q, loop, zmq_future, stdin_future):
     """
     Utilizes shared queue object (q) to put messages in.
 
     STDINFuture cancellation indicates EOF to zmq_pusher()
     """
 
-    global pid, poller
-    global logtype
-    global logf
-
     try:
         # Wait max. 1s for ZeroMQ connection to be stood up
         # (Seems to prevent race condition at start up)
-        yield from asyncio.wait_for(ZMQFuture, 1, loop=loop)
+        yield from asyncio.wait_for(zmq_future, 1, loop=loop)
         logf.write(b'after-pusher\n')
 
         while True:
@@ -170,16 +164,15 @@ def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
                 # No input detected, still no EOF either
                 logf.write(b'if-not-poll\n')
                 yield
-                continue 
+                continue
 
             else:
                 logf.write(b'HUP-break\n')
                 # EOF
                 break
-
             logf.write(b'bad-beef\n') #should not happen
 
-    except:
+    except: # pylint: disable=bare-except
         logf.write(b'exception\n')
         e = sys.exc_info()[0]
         logf.write(str(e).encode())
@@ -191,7 +184,7 @@ def stdin_queuer(q, loop, ZMQFuture, STDINFuture):
     finally:
         logf.write(b'queuer-finally\n')
         # zmq_pusher() will use this as a EOF notification
-        STDINFuture.cancel()
+        stdin_future.cancel()
 
 if __name__ == '__main__':
 
@@ -202,29 +195,28 @@ if __name__ == '__main__':
         logtype = "syslog"
 
     # Initiate asyncio objects
-    q = asyncio.Queue()
-    loop = asyncio.get_event_loop()
-    ZMQFuture = asyncio.Future()
-    STDINFuture = asyncio.Future()
+    _q = asyncio.Queue()
+    _loop = asyncio.get_event_loop()
+    _ZMQFuture = asyncio.Future()
+    _STDINFuture = asyncio.Future()
 
-    _zmq_pusher_task = asyncio.async(zmq_pusher(q, loop, ZMQFuture, STDINFuture))
-    _stdin_queuer_task = asyncio.async(stdin_queuer(q, loop, ZMQFuture, STDINFuture))
+    _zmq_pusher_task = asyncio.async(zmq_pusher(_q, _loop, _ZMQFuture, _STDINFuture))
+    _stdin_queuer_task = asyncio.async(stdin_queuer(_q, _loop, _ZMQFuture, _STDINFuture))
 
     try:
         ## Unbuffered debug log
         logf = open('/tmp/zmqpush', 'w+b', buffering=0)
-
         # Set sys.stdin non-blocking
         fcntl.fcntl(sys.stdin, fcntl.F_SETFL, os.O_NONBLOCK)
         # Edge-Triggered epoll (for non-blocking file descriptors)
         poller = select.epoll()
         poller.register(sys.stdin, select.EPOLLIN | select.EPOLLET)
-        
-        _start = loop.time()
-        loop.run_forever()
+
+        _start = _loop.time()
+        _loop.run_forever()
 
     finally:
-        loop.close()
-        _end = loop.time()
-    
-        print('Processed %d messages in %.04fms. Tagged with @pid:%d' % (msgcount, (_end-_start)*1000, pid))
+        _end = _loop.time()
+
+        print('Processed %d messages in %.04fms. Tagged with @pid:%d' %
+              (msgcount, (_end-_start)*1000, pid))
