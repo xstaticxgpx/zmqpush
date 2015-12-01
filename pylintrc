@@ -105,7 +105,7 @@ required-attributes=
 bad-functions=map,filter
 
 # Good variable names which should always be accepted, separated by a comma
-good-names=a,b,c,ca,ch,e,f,fs,g,h,i,ip,iv,j,k,l,n,r,s,sa,t,v,x,y,_
+good-names=a,b,c,ca,ch,e,f,fs,g,h,i,ip,iv,j,k,l,n,q,r,s,sa,t,v,x,y,_
 
 # Bad variable names which should always be refused, separated by a comma
 bad-names=
@@ -269,7 +269,7 @@ ignore-mixin-members=yes
 # List of module names for which member attributes should not be checked
 # (useful for modules/projects where namespaces are manipulated during runtime
 # and thus existing member attributes cannot be deduced by static analysis
-ignored-modules=
+ignored-modules=zmq,aiozmq
 
 # List of classes names for which member attributes should not be checked
 # (useful for classes with attributes dynamically set).
