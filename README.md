@@ -30,7 +30,7 @@ Configuration
 
 ```
 ## Configuration variables
-loghost = "xfwlgs-as-vip.sys.comcast.net"
+loghost = "logstash.host"
 logport = "5014"
 ##
 ```
