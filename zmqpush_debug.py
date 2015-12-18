@@ -20,7 +20,7 @@ import zmq, aiozmq
 #    import aiozmq
 
 ## Configuration variables
-loghost = "10.54.140.14" #xfwlgs-as-vip.sys.comcast.net
+loghost = "10.0.0.1" #logstash intake
 logport = "5014"
 ##
 
